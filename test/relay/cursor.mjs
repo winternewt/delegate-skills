@@ -81,6 +81,34 @@ export async function runCursor(h) {
     !Object.prototype.hasOwnProperty.call(value, "readOnlyViolation"));
 }
 {
+  const outDir = join(h.scratch, "out-ask-cursor");
+  const workDir = h.freshRepo("work-ask-cursor");
+  const captureFile = join(h.scratch, "capture-ask-cursor.json");
+  const run = spawnSync(process.execPath, [
+    h.relayPath("cursor"),
+    "--brief", h.briefPath,
+    "--cd", workDir,
+    "--out-dir", outDir,
+    "--ask",
+  ], {
+    env: { ...h.baseEnv, SMOKE_MODE: "cursor-success", SMOKE_CAPTURE_FILE: captureFile },
+    encoding: "utf8",
+  });
+  const capture = existsSync(captureFile)
+    ? JSON.parse(readFileSync(captureFile, "utf8"))
+    : { args: [] };
+  const value = existsSync(join(outDir, "result.json")) ? h.result(outDir) : {};
+  h.check("cursor ask: read-only in ask mode, without force",
+    run.status === 0 &&
+    JSON.stringify(capture.args) === JSON.stringify([
+      "--print", "--output-format", "stream-json", "--trust",
+      "--mode", "ask",
+    ]) &&
+    value.readOnly === true &&
+    value.force === false &&
+    value.mode === "ask");
+}
+{
   const outDir = join(h.scratch, "out-sandbox-disabled-cursor");
   const workDir = h.freshRepo("work-sandbox-disabled-cursor");
   const captureFile = join(h.scratch, "capture-sandbox-disabled-cursor.json");

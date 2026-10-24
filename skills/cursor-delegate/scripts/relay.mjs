@@ -39,6 +39,8 @@
  *                           auto). List names with `cursor-agent models`.
  *   --read-only             Run in Cursor's plan mode: read-only analysis, no
  *                           edits, no --force.
+ *   --ask                   Read-only in Cursor's ask mode (Q&A, read-only)
+ *                           instead of plan mode; implies --read-only.
  *   --sandbox <mode>        Explicitly enable or disable Cursor's sandbox for
  *                           this dispatch (enabled | disabled).
  *   --no-force              Withhold --force on a write-capable run; commands
@@ -209,6 +211,7 @@ function parseArgs(argv) {
     cd: process.cwd(),
     model: null,
     readOnly: false,
+    ask: false,
     force: true,
     sandbox: null,
     session: null,
@@ -237,6 +240,7 @@ function parseArgs(argv) {
       case "--lane": opts.lane = next(); break;
       case "--model": opts.model = next(); flagged.add("model"); break;
       case "--read-only": opts.readOnly = true; flagged.add("readOnly"); break;
+      case "--ask": opts.readOnly = true; opts.ask = true; flagged.add("readOnly"); break;
       case "--sandbox": opts.sandbox = next(); flagged.add("sandbox"); break;
       case "--no-force": opts.force = false; flagged.add("force"); break;
       case "--session": opts.session = next(); break;
@@ -403,7 +407,7 @@ function winq(value) {
 
 function buildArgv(opts) {
   const argv = ["--print", "--output-format", "stream-json", "--trust"];
-  if (opts.readOnly) argv.push("--mode", "plan");
+  if (opts.readOnly) argv.push("--mode", opts.ask ? "ask" : "plan");
   else if (opts.force) argv.push("--force");
   if (opts.sandbox) argv.push("--sandbox", opts.sandbox);
   if (opts.model) argv.push("--model", winq(opts.model));
@@ -443,6 +447,7 @@ function makeResultWriter(opts, version, run) {
       workdir: opts.cd,
       model: opts.model,
       readOnly: opts.readOnly,
+      mode: opts.readOnly ? (opts.ask ? "ask" : "plan") : null,
       force: opts.force && !opts.readOnly,
       stallTimeout: opts.stallTimeout,
       sandbox: opts.sandbox,
@@ -805,7 +810,7 @@ function printSummary(result, resultPath) {
   if (result.signal === "SIGKILL" && result.status === "failed") lines.push("hint: the host killed the process (commonly the OOM killer or a supervisor timeout) — this is not a cursor-agent error; check host memory and re-dispatch, or split the task into smaller briefs.");
   if (result.signal === "SIGTERM" && result.status === "failed") lines.push("hint: something outside the relay terminated cursor-agent (a supervisor, the session ending, or a manual kill) — when the relay itself does the killing it reports status \"timeout\", \"stalled\", or \"aborted\" instead; inspect the working tree before re-dispatching.");
   if (result.resumed) lines.push("mode: resumed an existing session");
-  if (result.readOnly) lines.push("mode: read-only (plan)");
+  if (result.readOnly) lines.push(`mode: read-only (${result.mode || "plan"})`);
   if (result.resolvedModel) lines.push(`model: ${result.resolvedModel}${result.permissionMode ? `  ·  permission mode: ${result.permissionMode}` : ""}`);
   if (result.sessionId) lines.push(`session id (resume with: --session ${result.sessionId}): ${result.sessionId}`);
   const touched = result.touchedFiles;

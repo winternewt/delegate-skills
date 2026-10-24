@@ -54,6 +54,9 @@
  *   --sandbox <mode>        read-only | workspace-write | danger-full-access
  *                           (default: workspace-write).
  *   --read-only             Shortcut for --sandbox read-only (review/diagnosis, no edits).
+ *   --profile <name>        A Codex permission profile (`-p <name>`) in place of `-s`, which is then
+ *                           never passed: the profile decides the sandbox. Refused beside
+ *                           --sandbox or --read-only.
  *   --resume-last           Continue the most recent Codex session; send only the delta brief.
  *                           An explicit --sandbox/--read-only override applies to the resumed turn.
  *   --session <id>          Continue a specific Codex session by thread id (from a prior
@@ -217,6 +220,7 @@ function parseArgs(argv) {
       case "--network-access": opts.networkAccess = true; break;
       case "--sandbox": opts.sandbox = next(); opts.sandboxConfigured = true; flagged.add("sandbox"); break;
       case "--read-only": opts.sandbox = "read-only"; opts.sandboxConfigured = true; flagged.add("sandbox"); flagged.add("readOnly"); break;
+      case "--profile": opts.profile = next(); flagged.add("profile"); break;
       case "--resume-last": opts.resumeLast = true; break;
       case "--session": opts.session = next(); break;
       case "--clean-env": opts.cleanEnv = true; break;
@@ -232,6 +236,10 @@ function parseArgs(argv) {
   applyFleetLane(opts, flagged);
   if (!SANDBOX_MODES.has(opts.sandbox)) {
     fail(`invalid --sandbox "${opts.sandbox}" (expected: ${[...SANDBOX_MODES].join(", ")})`);
+  }
+  if (opts.profile !== undefined && opts.profile !== null) {
+    if (!/^[A-Za-z0-9._-]+$/.test(opts.profile)) fail("--profile contains unsupported characters");
+    if (flagged.has("sandbox")) fail("--profile cannot be combined with --sandbox or --read-only: the profile decides the sandbox");
   }
   // Codex ignores the workspace-write network key under read-only and the run stays
   // offline without a word, so refuse the pair rather than record access that never happened.
@@ -444,7 +452,8 @@ function buildArgv(opts, finalPath) {
   const resuming = Boolean(opts.session || opts.resumeLast);
   // Codex accepts shared exec options before the resume subcommand. Reapply only
   // an explicitly selected sandbox; otherwise leave the active Codex config alone.
-  if (resuming && opts.sandboxConfigured) argv.push("-s", opts.sandbox);
+  if (opts.profile) argv.push("-p", opts.profile);
+  if (resuming && opts.sandboxConfigured && !opts.profile) argv.push("-s", opts.sandbox);
   if (opts.session) argv.push("resume", opts.session);
   else if (opts.resumeLast) argv.push("resume", "--last");
   // ponytail: shell:true on win32 (needed for the codex.cmd shim) doesn't quote
@@ -453,7 +462,7 @@ function buildArgv(opts, finalPath) {
   // Ceiling: if quoting proves too blunt, drop shell:true and resolve the shim.
   const outPath = process.platform === "win32" ? `"${finalPath}"` : finalPath;
   argv.push("--json", "-o", outPath);
-  if (!resuming) {
+  if (!resuming && !opts.profile) {
     argv.push("-s", opts.sandbox);
   }
   if (opts.model) argv.push("-m", opts.model);

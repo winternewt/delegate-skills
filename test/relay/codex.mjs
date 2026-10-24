@@ -14,6 +14,23 @@ h.check("codex effort: forwarded as a config override",
   effortRun.status === 0 && effortArgs.includes("-c") && effortArgs[effortArgs.indexOf("-c") + 1] === "model_reasoning_effort=low");
 h.check("codex effort: recorded in result.json",
   existsSync(join(effortOutDir, "result.json")) && h.result(effortOutDir).effort === "low");
+// ---- codex --profile runs under a Codex permission profile, and -s is then never passed ----
+const profileOutDir = join(h.scratch, "out-profile-codex");
+const profileArgsFile = join(h.scratch, "args-profile-codex");
+const profileRun = spawnSync(process.execPath,
+  [h.relayPath("codex"), "--brief", h.briefPath, "--cd", h.freshRepo("work-profile-codex"), "--out-dir", profileOutDir,
+   "--profile", "secrets-denied"],
+  { env: { ...h.baseEnv, SMOKE_MODE: "capture", SMOKE_ARGS_FILE: profileArgsFile }, encoding: "utf8" });
+const profileArgs = existsSync(profileArgsFile) ? JSON.parse(readFileSync(profileArgsFile, "utf8")) : [];
+h.check("codex profile: passed as -p, and no -s",
+  profileRun.status === 0 && h.pair(profileArgs, "-p", "secrets-denied") && !profileArgs.includes("-s"));
+for (const flags of [["--read-only"], ["--sandbox", "read-only"]]) {
+  const run = spawnSync(process.execPath,
+    [h.relayPath("codex"), "--brief", h.briefPath, "--cd", h.freshRepo(`work-profile-${flags.length}-codex`),
+     "--profile", "secrets-denied", ...flags],
+    { env: { ...h.baseEnv, SMOKE_MODE: "capture" }, encoding: "utf8" });
+  h.check(`codex profile: refused beside ${flags.join(" ")}`, run.status === 2 && /--profile/.test(run.stderr));
+}
 // ---- codex --network-access opens the workspace-write sandbox to the network ----
 const NETWORK_OVERRIDE = "sandbox_workspace_write.network_access=true";
 const configOverrides = (args) => args.flatMap((arg, i) => (arg === "-c" ? [args[i + 1]] : []));
